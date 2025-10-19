@@ -7,6 +7,7 @@ const multer = require('multer');
 const path = require('path');
 const sharp = require('sharp');
 const axios = require('axios');
+const fs = require('fs');
 require('dotenv').config();
 
 const app = express();
@@ -80,10 +81,39 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
+// Validation middleware
+const validateRegistration = (req, res, next) => {
+  const { username, email, password } = req.body;
+  
+  if (!username || username.length < 3) {
+    return res.status(400).json({ message: 'Username must be at least 3 characters' });
+  }
+  
+  if (!email || !/\S+@\S+\.\S+/.test(email)) {
+    return res.status(400).json({ message: 'Valid email is required' });
+  }
+  
+  if (!password || password.length < 6) {
+    return res.status(400).json({ message: 'Password must be at least 6 characters' });
+  }
+  
+  next();
+};
+
+const validateLogin = (req, res, next) => {
+  const { email, password } = req.body;
+  
+  if (!email || !password) {
+    return res.status(400).json({ message: 'Email and password are required' });
+  }
+  
+  next();
+};
+
 // Routes
 
 // Register
-app.post('/api/register', async (req, res) => {
+app.post('/api/register', validateRegistration, async (req, res) => {
   try {
     const { username, email, password } = req.body;
     
@@ -123,7 +153,7 @@ app.post('/api/register', async (req, res) => {
 });
 
 // Login
-app.post('/api/login', async (req, res) => {
+app.post('/api/login', validateLogin, async (req, res) => {
   try {
     const { email, password } = req.body;
 
@@ -164,6 +194,17 @@ app.post('/api/wardrobe/upload', authenticateToken, upload.single('image'), asyn
     }
 
     const { name, category, color, style, occasion, weather, tags } = req.body;
+    
+    // Validate required fields
+    if (!name || !category || !color) {
+      return res.status(400).json({ message: 'Name, category, and color are required' });
+    }
+    
+    // Validate category
+    const validCategories = ['top', 'bottom', 'shoes', 'accessories'];
+    if (!validCategories.includes(category)) {
+      return res.status(400).json({ message: 'Invalid category. Must be one of: top, bottom, shoes, accessories' });
+    }
 
     // Process and save image
     const filename = `clothing_${Date.now()}.jpg`;
@@ -219,7 +260,16 @@ app.get('/api/wardrobe', authenticateToken, async (req, res) => {
 app.get('/api/weather/:city', async (req, res) => {
   try {
     const { city } = req.params;
+    
+    if (!city || city.trim().length === 0) {
+      return res.status(400).json({ message: 'City name is required' });
+    }
+    
     const API_KEY = process.env.WEATHER_API_KEY || 'your-weather-api-key';
+    
+    if (API_KEY === 'your-weather-api-key') {
+      return res.status(400).json({ message: 'Weather API key not configured' });
+    }
     
     const response = await axios.get(
       `https://api.openweathermap.org/data/2.5/weather?q=${city}&appid=${API_KEY}&units=metric`
@@ -233,7 +283,13 @@ app.get('/api/weather/:city', async (req, res) => {
 
     res.json({ weather });
   } catch (error) {
-    res.status(500).json({ message: 'Weather data unavailable', error: error.message });
+    if (error.response?.status === 404) {
+      res.status(404).json({ message: 'City not found' });
+    } else if (error.response?.status === 401) {
+      res.status(401).json({ message: 'Invalid weather API key' });
+    } else {
+      res.status(500).json({ message: 'Weather data unavailable', error: error.message });
+    }
   }
 });
 
@@ -241,6 +297,11 @@ app.get('/api/weather/:city', async (req, res) => {
 app.post('/api/suggestions', authenticateToken, async (req, res) => {
   try {
     const { preferences, weather, occasion } = req.body;
+    
+    // Validate input
+    if (!preferences || typeof preferences !== 'object') {
+      return res.status(400).json({ message: 'Preferences object is required' });
+    }
     
     // Get user's wardrobe
     const wardrobe = await ClothingItem.find({ userId: req.user.userId });
@@ -294,6 +355,11 @@ app.post('/api/suggestions', authenticateToken, async (req, res) => {
 app.post('/api/suggestions/ai', authenticateToken, async (req, res) => {
   try {
     const { preferences, weather, occasion } = req.body;
+    
+    // Validate input
+    if (!preferences || typeof preferences !== 'object') {
+      return res.status(400).json({ message: 'Preferences object is required' });
+    }
     
     // Get user's wardrobe
     const wardrobe = await ClothingItem.find({ userId: req.user.userId });
@@ -466,6 +532,19 @@ function generateOutfitDescription(items, weather, occasion) {
   return description + '.';
 }
 
+// Get user info (for token verification)
+app.get('/api/user', authenticateToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId).select('-password');
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    res.json({ user: { id: user._id, username: user.username, email: user.email } });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
 // Delete clothing item
 app.delete('/api/wardrobe/:id', authenticateToken, async (req, res) => {
   try {
@@ -474,6 +553,14 @@ app.delete('/api/wardrobe/:id', authenticateToken, async (req, res) => {
     const item = await ClothingItem.findOne({ _id: id, userId: req.user.userId });
     if (!item) {
       return res.status(404).json({ message: 'Item not found' });
+    }
+
+    // Delete the image file
+    if (item.imageUrl) {
+      const imagePath = path.join(__dirname, item.imageUrl);
+      if (fs.existsSync(imagePath)) {
+        fs.unlinkSync(imagePath);
+      }
     }
 
     await ClothingItem.findByIdAndDelete(id);

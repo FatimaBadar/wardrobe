@@ -212,7 +212,16 @@ function Wardrobe() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!selectedFile) return;
+    
+    if (!selectedFile) {
+      alert('Please select an image');
+      return;
+    }
+    
+    if (!formData.name.trim() || !formData.color.trim()) {
+      alert('Please fill in name and color');
+      return;
+    }
 
     setUploading(true);
     const formDataToSend = new FormData();
@@ -244,19 +253,27 @@ function Wardrobe() {
         tags: ''
       });
       fetchWardrobe();
+      alert('Item uploaded successfully!');
     } catch (error) {
       console.error('Error uploading item:', error);
+      alert(error.response?.data?.message || 'Error uploading item');
     } finally {
       setUploading(false);
     }
   };
 
   const deleteItem = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this item?')) {
+      return;
+    }
+    
     try {
       await axios.delete(`/api/wardrobe/${id}`);
       fetchWardrobe();
+      alert('Item deleted successfully!');
     } catch (error) {
       console.error('Error deleting item:', error);
+      alert(error.response?.data?.message || 'Error deleting item');
     }
   };
 

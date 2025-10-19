@@ -312,13 +312,17 @@ function Suggestions() {
   };
 
   const fetchWeather = async () => {
-    if (!city.trim()) return;
+    if (!city.trim()) {
+      alert('Please enter a city name');
+      return;
+    }
     
     try {
       const response = await axios.get(`/api/weather/${city}`);
       setWeather(response.data.weather);
     } catch (error) {
       console.error('Error fetching weather:', error);
+      alert(error.response?.data?.message || 'Error fetching weather data');
     }
   };
 
@@ -342,6 +346,7 @@ function Suggestions() {
       setAiOutfits(null); // Clear AI suggestions
     } catch (error) {
       console.error('Error getting suggestions:', error);
+      alert(error.response?.data?.message || 'Error getting suggestions');
     } finally {
       setLoading(false);
     }
@@ -367,6 +372,7 @@ function Suggestions() {
       setSuggestions(null); // Clear rule-based suggestions
     } catch (error) {
       console.error('Error getting AI suggestions:', error);
+      alert(error.response?.data?.message || 'Error getting AI suggestions');
     } finally {
       setLoading(false);
     }

@@ -72,7 +72,6 @@ function Navbar() {
           </>
         ) : (
           <>
-            <Navbar to="/test">Test</Navbar>
             <NavLink to="/login">Login</NavLink>
             <NavLink to="/register">Register</NavLink>
           </>
